@@ -905,8 +905,8 @@ class MealAnalysis:
         
         return fig
 
-    def create_category_and_response_plots(self):
-        """Create heatmap of food category presence by carb level and glucose response scatter plots"""
+    def create_food_category_heatmap(self):
+        """Create heatmap showing food category presence by carb level"""
         # Filter for inactive meals with valid window
         valid_meals = self.meal_df[
             (self.meal_df['window_duration'] >= 110) & 
@@ -914,23 +914,10 @@ class MealAnalysis:
             (self.meal_df['max_interval_steps'] <= 200)
         ].copy()
         
-        # Create subplot figure - heatmap on top, two scatter plots below
-        fig = make_subplots(
-            rows=2, cols=2,
-            specs=[
-                [{"colspan": 2}, None],  # Top row: full-width heatmap
-                [{}, {}]                 # Bottom row: two scatter plots
-            ],
-            row_heights=[0.6, 0.4],
-            subplot_titles=[
-                "Food Category Presence by Carb Level",
-                "Glucose Peak Rise vs Carb Content",
-                "Glucose AUC vs Carb Content"
-            ],
-            vertical_spacing=0.15
-        )
+        # Create figure for heatmap
+        fig = go.Figure()
         
-        # Add heatmap
+        # Add heatmap (keeping existing heatmap code)
         category_cols = [col for col in valid_meals.columns if col.startswith('contains_')]
         categories = [col.replace('contains_', '') for col in category_cols]
         carb_levels = ['low', 'moderate', 'high']
@@ -947,7 +934,6 @@ class MealAnalysis:
                     category_pcts.append(0)
             z_data.append(category_pcts)
         
-        # Add heatmap trace
         fig.add_trace(
             go.Heatmap(
                 z=z_data,
@@ -957,76 +943,169 @@ class MealAnalysis:
                 text=np.round(z_data, 1),
                 texttemplate='%{text}%',
                 textfont={"size": 10},
-                hoverongaps=False,
-                colorbar=dict(
-                    len=0.8,  # Make colorbar shorter
-                    y=0.85,   # Position it near the top
-                    title="Presence %"
-                )
-            ),
-            row=1, col=1
+                hoverongaps=False
+            )
         )
         
-        # Add scatter plots
-        colors = {'low': 'rgb(198,219,239)', 'moderate': 'rgb(107,174,214)', 'high': 'rgb(33,113,181)'}
-        
-        # Peak Rise scatter
-        fig.add_trace(
-            go.Scatter(
-                x=valid_meals['carbohydrates'],
-                y=valid_meals['peak_rise'],
-                mode='markers',
-                marker=dict(
-                    color='rgba(70, 130, 180, 0.6)',
-                    size=8
-                ),
-                text=valid_meals['food_name'],
-                hovertemplate=(
-                    'Carbs: %{x:.1f}g<br>' +
-                    'Peak Rise: %{y:.1f} mg/dL<br>' +
-                    'Food: %{text}<br>' +
-                    '<extra></extra>'
-                )
-            ),
-            row=2, col=1
-        )
-        
-        # AUC scatter
-        fig.add_trace(
-            go.Scatter(
-                x=valid_meals['carbohydrates'],
-                y=valid_meals['auc'],
-                mode='markers',
-                marker=dict(
-                    color='rgba(70, 130, 180, 0.6)',
-                    size=8
-                ),
-                text=valid_meals['food_name'],
-                hovertemplate=(
-                    'Carbs: %{x:.1f}g<br>' +
-                    'AUC: %{y:.1f}<br>' +
-                    'Food: %{text}<br>' +
-                    '<extra></extra>'
-                )
-            ),
-            row=2, col=2
-        )
-        
-        # Update layout
         fig.update_layout(
-            height=900,
-            showlegend=False,
-            title_text="Food Category Presence and Glucose Response by Carb Level"
+            height=600,  # More height for heatmap
+            title_text="Food Category Presence by Carb Level",
+            yaxis_title="Food Category",
+            xaxis_title="Carb Level"
         )
         
-        # Update axes
-        fig.update_xaxes(title_text="Carbohydrates (g)", row=2, col=1)
-        fig.update_xaxes(title_text="Carbohydrates (g)", row=2, col=2)
+        return fig
+
+    def create_glucose_response_plots(self):
+        """Create scatter plots and box plots for glucose responses"""
+        # Filter for inactive meals
+        valid_meals = self.meal_df[
+            (self.meal_df['window_duration'] >= 110) & 
+            (self.meal_df['total_steps'] < 600) & 
+            (self.meal_df['max_interval_steps'] <= 200)
+        ].copy()
+
+        # Define metrics
+        metrics = {
+            'peak_rise': {'title': 'Peak Rise (mg/dL)', 'format': '.1f'},
+            'auc': {'title': 'AUC', 'format': '.0f'}
+        }
+
+        # Colors for carb categories
+        colors = {
+            'low': 'rgb(67, 147, 195)',     # Blue
+            'moderate': 'rgb(178, 24, 43)',  # Red
+            'high': 'rgb(27, 120, 55)'      # Green
+        }
+
+        # Create subplot figure
+        fig = make_subplots(
+            rows=2, cols=2,
+            row_heights=[0.5, 0.5],
+            subplot_titles=[
+                "Glucose Peak Rise vs Carbs", "Glucose AUC vs Carbs",
+                "Peak Rise by Carb Level", "AUC by Carb Level"
+            ],
+            vertical_spacing=0.2
+        )
+
+        # Add scatter plots and box plots for each metric
+        for idx, (metric, metric_info) in enumerate(metrics.items()):
+            # Add scatter plot (top row)
+            scatter_colors = valid_meals['carb_label'].map(colors)
+            fig.add_trace(
+                go.Scatter(
+                    x=valid_meals['carbohydrates'],
+                    y=valid_meals[metric],
+                    mode='markers',
+                    marker=dict(
+                        color=scatter_colors,
+                        size=8,
+                        opacity=0.7
+                    ),
+                    text=valid_meals['food_name'],
+                    hovertemplate=(
+                        'Carbs: %{x:.1f}g<br>' +
+                        f'{metric_info["title"]}: %{{y:.1f}}<br>' +
+                        'Food: %{text}<br>' +
+                        '<extra></extra>'
+                    ),
+                    showlegend=False
+                ),
+                row=1, col=idx+1
+            )
+
+            # Add box plots (bottom row)
+            # Calculate summary statistics for hover text
+            stats_text = {}
+            for carb_label in ['low', 'moderate', 'high']:
+                category_data = valid_meals[valid_meals['carb_label'] == carb_label][metric]
+                stats_text[carb_label] = (
+                    f"n = {len(category_data)}<br>"
+                    f"Median = {category_data.median():{metric_info['format']}}<br>"
+                    f"Mean = {category_data.mean():{metric_info['format']}}<br>"
+                    f"SD = {category_data.std():{metric_info['format']}}"
+                )
+            
+            # Create box plot for each carb category
+            for carb_label in ['low', 'moderate', 'high']:
+                category_data = valid_meals[valid_meals['carb_label'] == carb_label][metric]
+                
+                fig.add_trace(
+                    go.Box(
+                        y=category_data,
+                        name=carb_label.title(),
+                        marker_color=colors[carb_label],
+                        boxpoints='outliers',
+                        jitter=0,
+                        pointpos=0,
+                        hovertemplate=(
+                            f"{metric_info['title']}<br>"
+                            f"{stats_text[carb_label]}<br>"
+                            "<extra></extra>"
+                        ),
+                        showlegend=False
+                    ),
+                    row=2, col=idx+1
+                )
+
+            # Perform Mann-Whitney U tests between groups
+            stat_results = []
+            for g1, g2 in [('low', 'moderate'), ('moderate', 'high'), ('low', 'high')]:
+                group1 = valid_meals[valid_meals['carb_label'] == g1][metric]
+                group2 = valid_meals[valid_meals['carb_label'] == g2][metric]
+                
+                statistic, pvalue = stats.mannwhitneyu(group1, group2, alternative='two-sided')
+                stat_results.append(f'{g1.title()} vs {g2.title()}: p={pvalue:.3f}')
+            
+        # Update layout
+        for idx in range(2):
+            # Update x-axes for scatter plots
+            fig.update_xaxes(
+                title_text="Carbohydrates (g)", 
+                row=1, 
+                col=idx+1,
+                range=[0, 150]  # Set consistent range for carbs
+            )
+            # Update x-axes for box plots
+            fig.update_xaxes(
+                title_text="Carb Category",
+                row=2,
+                col=idx+1
+            )
+
+        # Update y-axes
+        fig.update_yaxes(title_text="Peak Rise (mg/dL)", row=1, col=1)
         fig.update_yaxes(title_text="Peak Rise (mg/dL)", row=2, col=1)
+        fig.update_yaxes(title_text="AUC", row=1, col=2)
         fig.update_yaxes(title_text="AUC", row=2, col=2)
+
+        # Final layout updates
+        fig.update_layout(
+            height=800,
+            showlegend=False
+        )
+
+        return fig
+
+    def get_statistical_results(self, valid_meals):
+        """Calculate statistical test results for both metrics"""
+        results = {}
+        metrics = {'peak_rise': 'Peak Rise', 'auc': 'AUC'}
         
-        return fig    
-    
+        for metric, metric_name in metrics.items():
+            stat_results = []
+            for g1, g2 in [('low', 'moderate'), ('moderate', 'high'), ('low', 'high')]:
+                group1 = valid_meals[valid_meals['carb_label'] == g1][metric]
+                group2 = valid_meals[valid_meals['carb_label'] == g2][metric]
+                
+                statistic, pvalue = stats.mannwhitneyu(group1, group2, alternative='two-sided')
+                stat_results.append(f'{g1.title()} vs {g2.title()}: p={pvalue:.3f}')
+            
+            results[metric] = stat_results
+        
+        return results
+
     def create_average_response_plot(self):
         """Create average glucose response curves by carb category"""
         # Filter for inactive meals with valid window
@@ -1138,6 +1217,21 @@ class MealAnalysis:
         return fig
 
     def render(self):
+        """Main render method for meal analysis component"""
+        st.header("Meal & Glucose Response Analysis")
+        
+        # Display food category heatmap
+        st.subheader("1. Food Category Distribution")
+        heatmap_fig = self.create_food_category_heatmap()
+        st.plotly_chart(heatmap_fig, use_container_width=True)
+        
+        # Display glucose response analysis
+        st.subheader("2. Glucose Response Analysis")
+        response_fig = self.create_glucose_response_plots()
+        st.plotly_chart(response_fig, use_container_width=True)
+
+
+    def render(self):
         """Main render method"""
         st.header("Meal & Glucose Response Analysis")
         
@@ -1150,29 +1244,42 @@ class MealAnalysis:
             self.analyze_food_composition()
         self.display_top_foods()  # Keep this - shows top 20 foods table
         
-        # Part 3: Food Category & Glucose Response Analysis (New section replacing macronutrient and clustering)
-        st.header("3. Food Category & Glucose Response Analysis")
+        # Display food category heatmap
+        st.subheader("3. Food Category Distribution")
+        heatmap_fig = self.create_food_category_heatmap()
+        st.plotly_chart(heatmap_fig, use_container_width=True)
         
-        # 3.1 Food Category Presence & Glucose Response
-        st.subheader("3.1 Food Category Presence & Glucose Response")
-        st.markdown("""
-            Analysis filtered for:
-            * Inactive meals: Both conditions must be met
-            - Less than 600 total steps in post-meal window
-            - No more than 200 steps in any 10-minute interval
-            * Minimum 110-minute observation window before next meal
-            (to ensure sufficient time to observe glucose response)
-            * Meals categorized by carb content:
-            - Low: < 30g
-            - Moderate: 30-75g
-            - High: > 75g
-        """)
-        # Create and display category and response plots
-        category_response_fig = self.create_category_and_response_plots()
-        st.plotly_chart(category_response_fig, use_container_width=True)
+        # Display glucose response analysis
+        st.subheader("4. Glucose Response Analysis")
+        response_fig = self.create_glucose_response_plots()
+        st.plotly_chart(response_fig, use_container_width=True)
         
-        # 3.2 Average Glucose Response Patterns
-        st.subheader("3.2 Average Glucose Response Patterns")
+        # Display statistical test results
+        st.write("Statistical Test Results (Mann-Whitney U):")
+        
+        col1, col2 = st.columns(2)
+        
+        # Get statistical results
+        valid_meals = self.meal_df[
+            (self.meal_df['window_duration'] >= 110) & 
+            (self.meal_df['total_steps'] < 600) & 
+            (self.meal_df['max_interval_steps'] <= 200)
+        ]
+        stats_results = self.get_statistical_results(valid_meals)
+        
+        with col1:
+            st.write("**Peak Rise**")
+            for result in stats_results['peak_rise']:
+                st.write(result)
+                
+        with col2:
+            st.write("**AUC**")
+            for result in stats_results['auc']:
+                st.write(result)
+
+        st.markdown("#") # Add some vertical space
+        # 5. Average Glucose Response Patterns
+        st.subheader("5. Average Glucose Response Patterns")
         st.markdown("""
             - Average glucose response patterns with same filtering criteria as above
             - Shaded areas show 95% confidence intervals
