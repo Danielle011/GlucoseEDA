@@ -9,6 +9,7 @@ from collections import defaultdict
 class MealAnalysis:
     def __init__(self):
         """Initialize MealAnalysis component"""
+        self.MIN_WINDOW_DURATION = 120  # minutes for meal window
         self.load_and_prepare_data()
         self.setup_category_maps()
 
@@ -47,25 +48,23 @@ class MealAnalysis:
 
     def display_meal_criteria(self):
         """Display meal analysis criteria and distribution visualization"""
-        # Display criteria explanation
-        st.subheader("1. Analysis Criteria")
         
         with st.expander("**Click to see detailed criteria**", expanded=True):
             # 1. Meal Window
             st.markdown("#### 1. Meal Window")
             st.markdown("""
-            - **Valid window**: At least 110 minutes until the next meal (maximum 120 minutes)
+            - **Valid window**: At least 120 minutes until the next meal
             - This ensures we can observe the full post-meal glucose response without interference from the next meal
             """)
             
             # 2. Post-meal Activity
             st.markdown("#### 2. Post-meal Activity Classification")
             st.markdown("""
-            **Post-meal Rest:** Both conditions must be met
+            **Post-meal Inactive:** Both conditions must be met
             - Less than 600 total steps during the 2-hour post-meal window
             - No more than 200 steps in any 10-minute interval during the post-meal window
             
-            **Post-meal Movement:**
+            **Post-meal Active:**
             - Any activity exceeding either of these thresholds
             - This represents having at least some meaningful movement during the post-meal period, not necessarily intense exercise
             """)
@@ -80,11 +79,12 @@ class MealAnalysis:
 
         # Calculate distributions for Sankey diagram
         total_meals = len(self.meal_df)
-        valid_window = len(self.meal_df[self.meal_df['window_duration'] >= 110])
+        valid_window = len(self.meal_df[self.meal_df['window_duration'] >= self.MIN_WINDOW_DURATION])
         invalid_window = total_meals - valid_window
-        
+
         # For valid window meals, calculate activity distribution
-        valid_meals = self.meal_df[self.meal_df['window_duration'] >= 110]
+        valid_meals = self.meal_df[self.meal_df['window_duration'] >= self.MIN_WINDOW_DURATION]
+
         
         rest_meals = valid_meals[
             (valid_meals['total_steps'] < 600) & 
@@ -107,7 +107,7 @@ class MealAnalysis:
         movement_carbs = get_carb_counts(movement_meals)
         
         # Display summary metrics
-        st.subheader("2. Meal Aanalysis Criteria Distribution")
+        st.subheader("Meal Aanalysis Criteria Distribution")
         col1, col2, col3 = st.columns(3)
         
         with col1:
@@ -372,7 +372,7 @@ class MealAnalysis:
         
         for _, meal in self.meal_df.iterrows():
             # Skip meals with short windows
-            if meal['window_duration'] < 110:
+            if meal['window_duration'] < self.MIN_WINDOW_DURATION:
                 continue
                 
             response = self._calculate_glucose_response(
@@ -475,69 +475,6 @@ class MealAnalysis:
         fig.update_xaxes(title_text="Carbohydrates (g)", row=1, col=2)
         fig.update_yaxes(title_text="Peak Rise (mg/dL)", row=1, col=1)
         fig.update_yaxes(title_text="AUC", row=1, col=2)
-        
-        return fig
-
-    def create_average_response_plot(self):
-        """Create average response curves by carb category for inactive meals"""
-        # Filter for inactive meals
-        inactive_responses = self.glucose_responses[
-            self.glucose_responses['activity_label'] == 'inactive'
-        ]
-        
-        # Calculate average response for each carb category and minute
-        avg_responses = inactive_responses.groupby(
-            ['carb_label', 'minutes']
-        )['value_above_baseline'].mean().reset_index()
-        
-        # Create figure
-        fig = go.Figure()
-        
-        colors = {
-            'low': 'rgba(99,110,250,0.7)',
-            'moderate': 'rgba(239,85,59,0.7)',
-            'high': 'rgba(0,204,150,0.7)'
-        }
-        
-        # Add line for each carb category
-        for carb_label in ['low', 'moderate', 'high']:
-            category_data = avg_responses[avg_responses['carb_label'] == carb_label]
-            category_data = category_data.sort_values('minutes')  # Ensure data is sorted by time
-            
-            fig.add_trace(
-                go.Scatter(
-                    x=category_data['minutes'],
-                    y=category_data['value_above_baseline'],
-                    name=f'{carb_label.title()} Carb',
-                    line=dict(
-                        color=colors[carb_label],
-                        width=2
-                    ),
-                    hovertemplate='%{y:.1f} mg/dL<extra></extra>'
-                )
-            )
-        
-        # Update layout
-        fig.update_layout(
-            title='Average Glucose Response by Carb Category (Inactive Meals)',
-            xaxis_title='Minutes After Meal',
-            yaxis_title='Glucose Above Baseline (mg/dL)',
-            showlegend=True,
-            height=500,
-            xaxis=dict(
-                tickmode='linear',
-                tick0=0,
-                dtick=30,
-                range=[0, 120]  # Ensure x-axis shows full 2-hour window
-            ),
-            legend=dict(
-                yanchor="top",
-                y=0.99,
-                xanchor="right",
-                x=0.99
-            ),
-            hovermode='x unified'
-        )
         
         return fig
 
@@ -907,12 +844,8 @@ class MealAnalysis:
 
     def create_food_category_heatmap(self):
         """Create heatmap showing food category presence by carb level"""
-        # Filter for inactive meals with valid window
-        valid_meals = self.meal_df[
-            (self.meal_df['window_duration'] >= 110) & 
-            (self.meal_df['total_steps'] < 600) & 
-            (self.meal_df['max_interval_steps'] <= 200)
-        ].copy()
+        # Use all meals without filtering
+        valid_meals = self.meal_df.copy()
         
         # Create figure for heatmap
         fig = go.Figure()
@@ -960,7 +893,7 @@ class MealAnalysis:
         """Create scatter plots and box plots for glucose responses"""
         # Filter for inactive meals
         valid_meals = self.meal_df[
-            (self.meal_df['window_duration'] >= 110) & 
+            (self.meal_df['window_duration'] >= self.MIN_WINDOW_DURATION) & 
             (self.meal_df['total_steps'] < 600) & 
             (self.meal_df['max_interval_steps'] <= 200)
         ].copy()
@@ -1049,14 +982,14 @@ class MealAnalysis:
                     row=2, col=idx+1
                 )
 
-            # Perform Mann-Whitney U tests between groups
-            stat_results = []
-            for g1, g2 in [('low', 'moderate'), ('moderate', 'high'), ('low', 'high')]:
-                group1 = valid_meals[valid_meals['carb_label'] == g1][metric]
-                group2 = valid_meals[valid_meals['carb_label'] == g2][metric]
+            # # Perform Mann-Whitney U tests between groups
+            # stat_results = []
+            # for g1, g2 in [('low', 'moderate'), ('moderate', 'high'), ('low', 'high')]:
+            #     group1 = valid_meals[valid_meals['carb_label'] == g1][metric]
+            #     group2 = valid_meals[valid_meals['carb_label'] == g2][metric]
                 
-                statistic, pvalue = stats.mannwhitneyu(group1, group2, alternative='two-sided')
-                stat_results.append(f'{g1.title()} vs {g2.title()}: p={pvalue:.3f}')
+            #     statistic, pvalue = stats.mannwhitneyu(group1, group2, alternative='two-sided')
+            #     stat_results.append(f'{g1.title()} vs {g2.title()}: p={pvalue:.3f}')
             
         # Update layout
         for idx in range(2):
@@ -1110,10 +1043,10 @@ class MealAnalysis:
         """Create average glucose response curves by carb category"""
         # Filter for inactive meals with valid window
         valid_meals = self.meal_df[
-            (self.meal_df['window_duration'] >= 110) & 
+            (self.meal_df['window_duration'] >= self.MIN_WINDOW_DURATION) & 
             (self.meal_df['total_steps'] < 600) & 
             (self.meal_df['max_interval_steps'] <= 200)
-        ].copy()
+        ]
         
         # Colors for carb categories
         colors = {
@@ -1134,7 +1067,7 @@ class MealAnalysis:
                 for _, meal in category_meals.iterrows():
                     glucose_data = self.glucose_df[
                         (self.glucose_df['DateTime'] >= meal['meal_time']) &
-                        (self.glucose_df['DateTime'] <= meal['meal_time'] + pd.Timedelta(minutes=110)) &
+                        (self.glucose_df['DateTime'] <= meal['meal_time'] + pd.Timedelta(minutes=120)) &
                         (self.glucose_df['MeasurementNumber'] == meal['measurement_number'])
                     ].copy()
                     
@@ -1210,72 +1143,58 @@ class MealAnalysis:
                 tickmode='linear',
                 tick0=0,
                 dtick=20,
-                range=[0, 110]
+                range=[0, 120]
             )
         )
         
         return fig
 
     def render(self):
-        """Main render method for meal analysis component"""
-        st.header("Meal & Glucose Response Analysis")
-        
-        # Display food category heatmap
-        st.subheader("1. Food Category Distribution")
-        heatmap_fig = self.create_food_category_heatmap()
-        st.plotly_chart(heatmap_fig, use_container_width=True)
-        
-        # Display glucose response analysis
-        st.subheader("2. Glucose Response Analysis")
-        response_fig = self.create_glucose_response_plots()
-        st.plotly_chart(response_fig, use_container_width=True)
-
-
-    def render(self):
         """Main render method"""
         st.header("Meal & Glucose Response Analysis")
         
-        # Part 1: Analysis Criteria and Data Overview
-        self.display_meal_criteria()  # Keep this - shows Sankey diagram and criteria
-        
-        # Part 2: Food Composition Overview
-        st.header("2. Top 20 Most Frequent Foods")
+        # Part 1: Food Composition Overview
+        st.subheader("1. Top 20 Most Frequent Foods")
         if not hasattr(self, 'single_foods_df'):
             self.analyze_food_composition()
         self.display_top_foods()  # Keep this - shows top 20 foods table
         
         # Display food category heatmap
-        st.subheader("3. Food Category Distribution")
+        st.subheader("2. Food Category Distribution")
         heatmap_fig = self.create_food_category_heatmap()
         st.plotly_chart(heatmap_fig, use_container_width=True)
+
+        # Part 2: Analysis Criteria and Data Overview
+        st.subheader("3. Analysis Criteria")
+        self.display_meal_criteria()  # Keep this - shows Sankey diagram and criteria
         
         # Display glucose response analysis
         st.subheader("4. Glucose Response Analysis")
         response_fig = self.create_glucose_response_plots()
         st.plotly_chart(response_fig, use_container_width=True)
         
-        # Display statistical test results
-        st.write("Statistical Test Results (Mann-Whitney U):")
+        # # Display statistical test results
+        # st.write("Statistical Test Results (Mann-Whitney U):")
         
-        col1, col2 = st.columns(2)
+        # col1, col2 = st.columns(2)
         
-        # Get statistical results
-        valid_meals = self.meal_df[
-            (self.meal_df['window_duration'] >= 110) & 
-            (self.meal_df['total_steps'] < 600) & 
-            (self.meal_df['max_interval_steps'] <= 200)
-        ]
-        stats_results = self.get_statistical_results(valid_meals)
+        # # Get statistical results
+        # valid_meals = self.meal_df[
+        #     (self.meal_df['window_duration'] >= self.MIN_WINDOW_DURATION ) & 
+        #     (self.meal_df['total_steps'] < 600) & 
+        #     (self.meal_df['max_interval_steps'] <= 200)
+        # ]
+        # stats_results = self.get_statistical_results(valid_meals)
         
-        with col1:
-            st.write("**Peak Rise**")
-            for result in stats_results['peak_rise']:
-                st.write(result)
+        # with col1:
+        #     st.write("**Peak Rise**")
+        #     for result in stats_results['peak_rise']:
+        #         st.write(result)
                 
-        with col2:
-            st.write("**AUC**")
-            for result in stats_results['auc']:
-                st.write(result)
+        # with col2:
+        #     st.write("**AUC**")
+        #     for result in stats_results['auc']:
+        #         st.write(result)
 
         st.markdown("#") # Add some vertical space
         # 5. Average Glucose Response Patterns
@@ -1284,12 +1203,12 @@ class MealAnalysis:
             - Average glucose response patterns with same filtering criteria as above
             - Shaded areas show 95% confidence intervals
             - Baseline glucose normalized to 0
-            - X-axis shows minutes after meal (0-110 minutes)
+            - X-axis shows minutes after meal (0-120 minutes)
         """)
 
         # Get valid meals
         valid_meals = self.meal_df[
-            (self.meal_df['window_duration'] >= 110) & 
+            (self.meal_df['window_duration']  >= self.MIN_WINDOW_DURATION ) & 
             (self.meal_df['total_steps'] < 600) & 
             (self.meal_df['max_interval_steps'] <= 200)
         ]
