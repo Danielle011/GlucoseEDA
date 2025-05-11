@@ -1021,23 +1021,23 @@ class MealAnalysis:
 
         return fig
 
-    def get_statistical_results(self, valid_meals):
-        """Calculate statistical test results for both metrics"""
-        results = {}
-        metrics = {'peak_rise': 'Peak Rise', 'auc': 'AUC'}
+    # def get_statistical_results(self, valid_meals):
+    #     """Calculate statistical test results for both metrics"""
+    #     results = {}
+    #     metrics = {'peak_rise': 'Peak Rise', 'auc': 'AUC'}
         
-        for metric, metric_name in metrics.items():
-            stat_results = []
-            for g1, g2 in [('low', 'moderate'), ('moderate', 'high'), ('low', 'high')]:
-                group1 = valid_meals[valid_meals['carb_label'] == g1][metric]
-                group2 = valid_meals[valid_meals['carb_label'] == g2][metric]
+    #     for metric, metric_name in metrics.items():
+    #         stat_results = []
+    #         for g1, g2 in [('low', 'moderate'), ('moderate', 'high'), ('low', 'high')]:
+    #             group1 = valid_meals[valid_meals['carb_label'] == g1][metric]
+    #             group2 = valid_meals[valid_meals['carb_label'] == g2][metric]
                 
-                statistic, pvalue = stats.mannwhitneyu(group1, group2, alternative='two-sided')
-                stat_results.append(f'{g1.title()} vs {g2.title()}: p={pvalue:.3f}')
+    #             statistic, pvalue = stats.mannwhitneyu(group1, group2, alternative='two-sided')
+    #             stat_results.append(f'{g1.title()} vs {g2.title()}: p={pvalue:.3f}')
             
-            results[metric] = stat_results
+    #         results[metric] = stat_results
         
-        return results
+    #     return results
 
     def create_average_response_plot(self):
         """Create average glucose response curves by carb category"""
@@ -1196,7 +1196,6 @@ class MealAnalysis:
         #     for result in stats_results['auc']:
         #         st.write(result)
 
-        st.markdown("#") # Add some vertical space
         # 5. Average Glucose Response Patterns
         st.subheader("5. Average Glucose Response Patterns")
         st.markdown("""
