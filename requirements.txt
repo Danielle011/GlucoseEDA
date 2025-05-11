@@ -1,8 +1,8 @@
-streamlit>=1.24.0
-pandas>=1.5.0
-numpy>=1.23.0
-plotly>=5.13.0
-scipy>=1.9.0
-pytz>=2023.3
+streamlit==1.29.0
+pandas==2.1.4
+numpy==1.26.2
+plotly==5.18.0
+scipy==1.11.4
+pytz==2023.3
 matplotlib==3.8.2
-seaborn
+seaborn==0.13.0
